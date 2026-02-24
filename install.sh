@@ -332,11 +332,21 @@ display:
 EOF
 ok "Config written to $CONFIG_FILE"
 
-# ── Shell alias ───────────────────────────────────────────────────────────────
-NUDGE_CMD="$VENV_DIR/bin/python $INSTALL_DIR/nudge.py"
-ALIAS_LINE="alias nudge='$NUDGE_CMD'"
+# ── Shell wrapper script ──────────────────────────────────────────────────────
+# Use a wrapper script at ~/.local/bin/nudge instead of an alias.
+# Aliases break when the install path contains spaces; wrapper scripts do not.
+WRAPPER_DIR="$HOME/.local/bin"
+WRAPPER="$WRAPPER_DIR/nudge"
+mkdir -p "$WRAPPER_DIR"
 
-# Detect shell config file
+cat > "$WRAPPER" <<WRAPPER_EOF
+#!/bin/zsh
+exec '$VENV_DIR/bin/python' '$INSTALL_DIR/nudge.py' "\$@"
+WRAPPER_EOF
+chmod +x "$WRAPPER"
+ok "nudge command installed at $WRAPPER"
+
+# Ensure ~/.local/bin is in PATH (add once to shell rc if missing)
 SHELL_RC=""
 if [[ -f "$HOME/.zshrc" ]]; then
     SHELL_RC="$HOME/.zshrc"
@@ -347,20 +357,141 @@ elif [[ -f "$HOME/.bash_profile" ]]; then
 fi
 
 if [[ -n "$SHELL_RC" ]]; then
-    if grep -q "alias nudge=" "$SHELL_RC" 2>/dev/null; then
-        # Update existing alias
-        sed -i '' "s|alias nudge=.*|$ALIAS_LINE|" "$SHELL_RC"
-        ok "Updated nudge alias in $SHELL_RC"
-    else
-        echo "" >> "$SHELL_RC"
-        echo "# nudge — meeting scribe" >> "$SHELL_RC"
-        echo "$ALIAS_LINE" >> "$SHELL_RC"
-        ok "Added nudge alias to $SHELL_RC"
+    # Remove any old alias lines that may have stale paths
+    sed -i '' '/^# nudge — meeting scribe/d' "$SHELL_RC" 2>/dev/null || true
+    sed -i '' '/^alias nudge=/d' "$SHELL_RC" 2>/dev/null || true
+
+    if ! grep -q 'local/bin' "$SHELL_RC" 2>/dev/null; then
+        echo '' >> "$SHELL_RC"
+        echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
+        ok "Added ~/.local/bin to PATH in $SHELL_RC"
     fi
-else
-    warn "Could not detect shell config. Add this manually:"
-    echo "    $ALIAS_LINE"
 fi
+
+# ── App bundle + icon for macOS Login Items ───────────────────────────────────
+APP_BUNDLE="$HOME/Applications/nudge.app"
+APP_EXECUTABLE="$APP_BUNDLE/Contents/MacOS/nudge-watcher"
+RESOURCES_DIR="$APP_BUNDLE/Contents/Resources"
+
+info "Building nudge.app for Login Items display..."
+mkdir -p "$APP_BUNDLE/Contents/MacOS" "$RESOURCES_DIR"
+
+# Generate app icon (512×512 PNG → icns) using pure Python stdlib
+"$PYTHON" - <<'PY_ICON'
+import struct, zlib, math, subprocess, os, tempfile, shutil
+
+def make_png(path, size=512):
+    """Generate a dark gradient circle with white audio waveform bars."""
+    cx = cy = size // 2
+    r = size // 2 - 4
+    data = []
+    for y in range(size):
+        row = bytearray()
+        for x in range(size):
+            dx, dy = x - cx, y - cy
+            dist = math.sqrt(dx*dx + dy*dy)
+            if dist > r:
+                row += bytes([0, 0, 0, 0])
+                continue
+            # Background: deep indigo → dark navy
+            t = dist / r
+            bg = (int(38 + 22*t), int(24 + 18*t), int(92 + 28*t), 255)
+            # Waveform: 3 bars (left shorter, center tall, right shorter)
+            bar_w  = max(int(size * 0.05), 1)
+            gap    = int(size * 0.12)
+            bh     = [int(size*0.32), int(size*0.52), int(size*0.32)]
+            bx     = [cx - gap, cx, cx + gap]
+            in_bar = False
+            for i in range(3):
+                if abs(x - bx[i]) <= bar_w:
+                    top = cy - bh[i]//2
+                    bot = cy + bh[i]//2
+                    # Rounded ends: clip corners
+                    cap = bar_w
+                    if (y < top + cap and abs(x - bx[i]) + abs(y - (top + cap)) > cap + bar_w) or \
+                       (y > bot - cap and abs(x - bx[i]) + abs(y - (bot - cap)) > cap + bar_w):
+                        continue
+                    if top <= y <= bot:
+                        in_bar = True
+                        break
+            pixel = (255, 255, 255, 255) if in_bar else bg
+            row += bytes(pixel)
+        data.append(bytes(row))
+
+    def chunk(t, d):
+        c = t + d
+        return struct.pack('>I', len(d)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+
+    raw = b''.join(b'\x00' + row for row in data)
+    with open(path, 'wb') as f:
+        f.write(
+            b'\x89PNG\r\n\x1a\n' +
+            chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 6, 0, 0, 0)) +
+            chunk(b'IDAT', zlib.compress(raw, 6)) +
+            chunk(b'IEND', b'')
+        )
+
+# Write source PNG
+src = '/tmp/nudge_icon_512.png'
+make_png(src)
+
+# Build iconset
+iconset = '/tmp/nudge.iconset'
+os.makedirs(iconset, exist_ok=True)
+sizes = [16, 32, 64, 128, 256, 512]
+for s in sizes:
+    subprocess.run(['sips', '-z', str(s), str(s), src, '--out', f'{iconset}/icon_{s}x{s}.png'],
+                   capture_output=True)
+    subprocess.run(['sips', '-z', str(s*2), str(s*2), src, '--out', f'{iconset}/icon_{s}x{s}@2x.png'],
+                   capture_output=True)
+
+# Convert to icns
+resources = os.path.expanduser('~/Applications/nudge.app/Contents/Resources')
+subprocess.run(['iconutil', '-c', 'icns', iconset, '-o', f'{resources}/nudge.icns'],
+               capture_output=True)
+
+# Cleanup
+shutil.rmtree(iconset, ignore_errors=True)
+os.remove(src)
+print('  Icon generated.')
+PY_ICON
+
+# Info.plist
+cat > "$APP_BUNDLE/Contents/Info.plist" <<'PLIST_EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>nudge</string>
+    <key>CFBundleDisplayName</key>
+    <string>nudge</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.nudge.watcher</string>
+    <key>CFBundleVersion</key>
+    <string>1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleExecutable</key>
+    <string>nudge-watcher</string>
+    <key>CFBundleIconFile</key>
+    <string>nudge</string>
+    <key>LSUIElement</key>
+    <true/>
+</dict>
+</plist>
+PLIST_EOF
+
+# Launcher executable
+cat > "$APP_EXECUTABLE" <<EXE_EOF
+#!/bin/zsh
+exec '$VENV_DIR/bin/python' '$INSTALL_DIR/nudge.py' watch run
+EXE_EOF
+chmod +x "$APP_EXECUTABLE"
+
+# Ad-hoc sign so Gatekeeper allows execution on Apple Silicon
+codesign --force --deep --sign - "$APP_BUNDLE" 2>/dev/null
+ok "nudge.app built and signed → $APP_BUNDLE"
 
 # ── Install LaunchAgent (auto-watch) ──────────────────────────────────────────
 if [[ "$INSTALL_WATCH" == true ]]; then
@@ -371,8 +502,7 @@ if [[ "$INSTALL_WATCH" == true ]]; then
     if [[ -f "$PLIST_TEMPLATE" ]]; then
         mkdir -p "$HOME/Library/LaunchAgents"
         sed \
-            -e "s|PYTHON_PATH|$VENV_DIR/bin/python|g" \
-            -e "s|NUDGE_PATH|$INSTALL_DIR/nudge.py|g" \
+            -e "s|APP_EXECUTABLE_PATH|$APP_EXECUTABLE|g" \
             -e "s|NUDGE_HOME|$NUDGE_HOME|g" \
             -e "s|HOME_PATH|$HOME|g" \
             "$PLIST_TEMPLATE" > "$PLIST_DEST"

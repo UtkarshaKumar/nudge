@@ -675,6 +675,8 @@ def _format_transcript_for_doc(transcript: str, started_at: datetime) -> str:
 _PLIST_LABEL = "com.nudge.watcher"
 _PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / f"{_PLIST_LABEL}.plist"
 _WATCHER_LOG = Path.home() / ".nudge" / "watcher.log"
+_APP_BUNDLE = Path.home() / "Applications" / "nudge.app"
+_APP_EXECUTABLE = _APP_BUNDLE / "Contents" / "MacOS" / "nudge-watcher"
 
 watch_app = typer.Typer(
     name="watch",
@@ -702,20 +704,138 @@ def watch_run() -> None:
     watcher.run()
 
 
+def _generate_icon(resources_dir: Path) -> None:
+    """Generate nudge.icns using pure stdlib PNG + sips + iconutil."""
+    import struct, zlib, math, tempfile, shutil
+
+    def make_png(path: str, size: int = 512) -> None:
+        cx = cy = size // 2
+        r = size // 2 - 4
+        rows = []
+        for y in range(size):
+            row = bytearray()
+            for x in range(size):
+                dx, dy = x - cx, y - cy
+                dist = math.sqrt(dx * dx + dy * dy)
+                if dist > r:
+                    row += b'\x00\x00\x00\x00'
+                    continue
+                t = dist / r
+                bg = (int(38 + 22*t), int(24 + 18*t), int(92 + 28*t), 255)
+                bar_w = max(int(size * 0.05), 1)
+                gap   = int(size * 0.12)
+                bh    = [int(size*0.32), int(size*0.52), int(size*0.32)]
+                bx    = [cx - gap, cx, cx + gap]
+                in_bar = False
+                for i in range(3):
+                    if abs(x - bx[i]) <= bar_w:
+                        top, bot = cy - bh[i]//2, cy + bh[i]//2
+                        if top <= y <= bot:
+                            in_bar = True
+                            break
+                row += bytes((255, 255, 255, 255) if in_bar else bg)
+            rows.append(bytes(row))
+
+        def chunk(t: bytes, d: bytes) -> bytes:
+            c = t + d
+            return struct.pack('>I', len(d)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+
+        raw = b''.join(b'\x00' + row for row in rows)
+        with open(path, 'wb') as f:
+            f.write(
+                b'\x89PNG\r\n\x1a\n' +
+                chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 6, 0, 0, 0)) +
+                chunk(b'IDAT', zlib.compress(raw, 6)) +
+                chunk(b'IEND', b'')
+            )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        src_png = str(Path(tmp) / "nudge_512.png")
+        iconset_dir = str(Path(tmp) / "nudge.iconset")
+        Path(iconset_dir).mkdir()
+        make_png(src_png)
+        for s in [16, 32, 64, 128, 256, 512]:
+            subprocess.run(
+                ["sips", "-z", str(s), str(s), src_png, "--out", f"{iconset_dir}/icon_{s}x{s}.png"],
+                capture_output=True,
+            )
+            subprocess.run(
+                ["sips", "-z", str(s*2), str(s*2), src_png, "--out", f"{iconset_dir}/icon_{s}x{s}@2x.png"],
+                capture_output=True,
+            )
+        resources_dir.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["iconutil", "-c", "icns", iconset_dir, "-o", str(resources_dir / "nudge.icns")],
+            capture_output=True,
+        )
+
+
+def _build_app_bundle(python_bin: Path, nudge_script: Path) -> None:
+    """Create ~/Applications/nudge.app bundle with icon and ad-hoc sign it."""
+    macos_dir = _APP_BUNDLE / "Contents" / "MacOS"
+    resources_dir = _APP_BUNDLE / "Contents" / "Resources"
+    macos_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate icon
+    _generate_icon(resources_dir)
+
+    # Info.plist — gives Login Items the display name "nudge"
+    info_plist = _APP_BUNDLE / "Contents" / "Info.plist"
+    info_plist.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"'
+        ' "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n'
+        '<dict>\n'
+        '    <key>CFBundleName</key>\n'
+        '    <string>nudge</string>\n'
+        '    <key>CFBundleDisplayName</key>\n'
+        '    <string>nudge</string>\n'
+        '    <key>CFBundleIdentifier</key>\n'
+        '    <string>com.nudge.watcher</string>\n'
+        '    <key>CFBundleVersion</key>\n'
+        '    <string>1.0</string>\n'
+        '    <key>CFBundleShortVersionString</key>\n'
+        '    <string>1.0</string>\n'
+        '    <key>CFBundleExecutable</key>\n'
+        '    <string>nudge-watcher</string>\n'
+        '    <key>CFBundleIconFile</key>\n'
+        '    <string>nudge</string>\n'
+        '    <key>LSUIElement</key>\n'
+        '    <true/>\n'
+        '</dict>\n'
+        '</plist>\n'
+    )
+
+    # Launcher executable — thin shell script that runs the Python watcher
+    py = str(python_bin)
+    ns = str(nudge_script)
+    _APP_EXECUTABLE.write_text(f"#!/bin/zsh\nexec '{py}' '{ns}' watch run\n")
+    _APP_EXECUTABLE.chmod(0o755)
+
+    # Ad-hoc sign so macOS allows execution on Apple Silicon
+    subprocess.run(
+        ["codesign", "--force", "--deep", "--sign", "-", str(_APP_BUNDLE)],
+        capture_output=True,
+    )
+
+
 @watch_app.command("install")
 def watch_install() -> None:
     """
     Install nudge as a macOS login item.
     After this, nudge watches for meetings automatically every time you log in.
     """
-    import shutil
-
     python_bin = Path(sys.executable)
     nudge_script = Path(__file__).parent.parent.parent / "nudge.py"
 
     if not python_bin.exists():
         display.print_error(f"Python not found at {python_bin}")
         raise typer.Exit(1)
+
+    # Build ~/Applications/nudge.app so Login Items shows "nudge" not "python"
+    _build_app_bundle(python_bin, nudge_script)
+    display.print_success(f"App bundle created: {_APP_BUNDLE}")
 
     # Load plist template
     template_path = nudge_script.parent / "com.nudge.watcher.plist.template"
@@ -724,8 +844,7 @@ def watch_install() -> None:
         raise typer.Exit(1)
 
     plist_content = template_path.read_text()
-    plist_content = plist_content.replace("PYTHON_PATH", str(python_bin))
-    plist_content = plist_content.replace("NUDGE_PATH", str(nudge_script))
+    plist_content = plist_content.replace("APP_EXECUTABLE_PATH", str(_APP_EXECUTABLE))
     plist_content = plist_content.replace("NUDGE_HOME", str(Path.home() / ".nudge"))
     plist_content = plist_content.replace("HOME_PATH", str(Path.home()))
 
@@ -762,6 +881,12 @@ def watch_uninstall() -> None:
         capture_output=True,
     )
     _PLIST_PATH.unlink(missing_ok=True)
+
+    # Remove the app bundle so Login Items entry is fully cleaned up
+    if _APP_BUNDLE.exists():
+        import shutil
+        shutil.rmtree(_APP_BUNDLE, ignore_errors=True)
+
     display.print_success("nudge watcher removed from login items")
     console.print("  [dim]Run 'nudge watch install' to re-enable auto-detection.[/dim]")
 

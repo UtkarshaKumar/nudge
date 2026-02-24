@@ -14,12 +14,15 @@
     <key>Label</key>
     <string>com.nudge.watcher</string>
 
+    <!-- Associate with the nudge app bundle so Login Items shows "nudge" not "python" -->
+    <key>AssociatedBundleIdentifiers</key>
+    <array>
+        <string>com.nudge.watcher</string>
+    </array>
+
     <key>ProgramArguments</key>
     <array>
-        <string>PYTHON_PATH</string>
-        <string>NUDGE_PATH</string>
-        <string>watch</string>
-        <string>run</string>
+        <string>APP_EXECUTABLE_PATH</string>
     </array>
 
     <!-- Start automatically when you log in -->
