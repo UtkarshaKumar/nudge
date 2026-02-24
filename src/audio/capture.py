@@ -28,8 +28,8 @@ from .devices import find_device_id
 logger = logging.getLogger(__name__)
 
 CHUNK_DTYPE = "float32"
-# Queue capacity: 60 seconds of audio at 16kHz in 0.1s blocks
-_QUEUE_MAXSIZE = 600
+# Queue capacity: 60 seconds of audio at 48kHz in 0.1s blocks
+_QUEUE_MAXSIZE = 1800
 
 
 class AudioCapture:
@@ -51,12 +51,19 @@ class AudioCapture:
         self.session_dir.mkdir(parents=True, exist_ok=True)
 
         self._device_id = self._resolve_device()
+        # Always capture at the device's native rate to avoid silence from
+        # rate mismatches (e.g. BlackHole at 48kHz, config.sample_rate=16kHz).
+        # We resample to config.sample_rate before saving each chunk.
+        self._native_rate = self._get_native_rate()
+        self._target_rate = config.sample_rate  # 16000 Hz for Whisper
+
         self._audio_queue: queue.Queue[Optional[np.ndarray]] = queue.Queue(
             maxsize=_QUEUE_MAXSIZE
         )
         self._chunk_buffer: list[np.ndarray] = []
         self._chunk_index = 0
-        self._frames_per_chunk = config.sample_rate * config.chunk_duration
+        # Accumulate chunks at native rate
+        self._frames_per_chunk = self._native_rate * config.chunk_duration
 
         self._is_recording = False
         self._stream_thread: Optional[threading.Thread] = None
@@ -117,7 +124,7 @@ class AudioCapture:
             with sd.InputStream(
                 device=self._device_id,
                 channels=self.config.channels,
-                samplerate=self.config.sample_rate,
+                samplerate=self._native_rate,  # capture at device's native rate
                 dtype=CHUNK_DTYPE,
                 latency="low",
                 callback=self._audio_callback,
@@ -167,6 +174,21 @@ class AudioCapture:
     # Chunk management
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _resample(audio: np.ndarray, src_rate: int, tgt_rate: int) -> np.ndarray:
+        """Resample mono audio using linear interpolation (no external deps)."""
+        if src_rate == tgt_rate:
+            return audio
+        flat = audio[:, 0] if audio.ndim > 1 else audio
+        src_len = len(flat)
+        tgt_len = max(1, int(src_len * tgt_rate / src_rate))
+        resampled = np.interp(
+            np.linspace(0, src_len - 1, tgt_len),
+            np.arange(src_len),
+            flat,
+        ).astype(np.float32)
+        return resampled.reshape(-1, 1) if audio.ndim > 1 else resampled
+
     def _save_chunk(self) -> Optional[Path]:
         if not self._chunk_buffer:
             return None
@@ -174,11 +196,15 @@ class AudioCapture:
         audio = np.concatenate(self._chunk_buffer, axis=0)
         self._chunk_buffer = []
 
+        # Resample from native device rate to Whisper's expected 16 kHz
+        if self._native_rate != self._target_rate:
+            audio = self._resample(audio, self._native_rate, self._target_rate)
+
         chunk_path = self.session_dir / f"chunk_{self._chunk_index:04d}.wav"
-        sf.write(str(chunk_path), audio, self.config.sample_rate)
+        sf.write(str(chunk_path), audio, self._target_rate)
         self._chunk_index += 1
 
-        logger.debug(f"Saved {chunk_path.name} ({len(audio) / self.config.sample_rate:.1f}s)")
+        logger.debug(f"Saved {chunk_path.name} ({len(audio) / self._target_rate:.1f}s)")
 
         if self._on_chunk_saved:
             threading.Thread(
@@ -217,3 +243,15 @@ class AudioCapture:
                 "Run 'nudge doctor' to diagnose setup issues."
             )
         return device_id
+
+    def _get_native_rate(self) -> int:
+        """Return the device's native sample rate to avoid silent captures."""
+        info = sd.query_devices(self._device_id)
+        native = int(info.get("default_samplerate", self.config.sample_rate))
+        if native != self.config.sample_rate:
+            logger.info(
+                f"Device native rate {native} Hz differs from config "
+                f"{self.config.sample_rate} Hz — capturing at {native} Hz "
+                f"and resampling to {self.config.sample_rate} Hz"
+            )
+        return native
