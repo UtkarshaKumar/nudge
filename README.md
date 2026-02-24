@@ -283,3 +283,21 @@ Run `nudge doctor` first — it checks every dependency and tells you exactly wh
 
 **Word doc not opening after meeting**
 → Check that Microsoft Word or Pages is installed. The doc is always saved regardless — find it in your meeting notes folder.
+
+---
+
+## Evaluation & Evals
+
+nudge includes an evaluation suite (`src/evals/`) to benchmark the local Llama model against a golden dataset of challenging transcripts (ambiguous deadlines, no-action meetings, etc.).
+
+You can run the evals to test prompts or try new LLMs:
+```bash
+python -m src.evals.run
+```
+
+**Current Baseline (llama3.2:3b @ zero temperature):**
+- **Task F1 Score:** 75.0%
+- **Task Recall:** 75.0%  
+- **Task Precision:** 75.0%
+- **Deadline Extract Accuracy:** 100.0%
+- **Owner Extract Accuracy:** 83.3%
