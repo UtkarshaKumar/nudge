@@ -60,12 +60,56 @@ ok "Homebrew $(brew --version | head -1 | awk '{print $2}')"
 
 # ── BlackHole ─────────────────────────────────────────────────────────────────
 step "Step 2/7  BlackHole virtual audio driver"
+
+# Check if BlackHole audio device is already visible to the system (post-reboot)
+BLACKHOLE_ACTIVE=false
+if system_profiler SPAudioDataType 2>/dev/null | grep -q "BlackHole 2ch"; then
+    BLACKHOLE_ACTIVE=true
+fi
+
 if brew list --cask blackhole-2ch &>/dev/null 2>&1 || brew list blackhole-2ch &>/dev/null 2>&1; then
-    ok "BlackHole 2ch already installed"
+    if [[ "$BLACKHOLE_ACTIVE" == true ]]; then
+        ok "BlackHole 2ch installed and active"
+    else
+        warn "BlackHole 2ch is installed but not yet active — it needs a reboot to load the audio driver."
+        echo ""
+        echo -e "  ${BOLD}${RED}⚠  ACTION REQUIRED: Restart your Mac before continuing.${NC}"
+        echo ""
+        echo "  BlackHole is a kernel audio driver. macOS must restart before it"
+        echo "  appears in Audio MIDI Setup. Without this step, you won't be able"
+        echo "  to check the BlackHole 2ch box in the Multi-Output Device."
+        echo ""
+        echo "  After restarting:"
+        echo "    1. Come back to this folder"
+        echo "    2. Run: ${BOLD}bash install.sh${NC}"
+        echo "    3. The installer will skip BlackHole (already installed) and"
+        echo "       continue from the Audio MIDI Setup step."
+        echo ""
+        read -rp "  Press Enter to exit and restart your Mac, or type 'skip' to continue anyway: " REBOOT_CHOICE
+        if [[ "${REBOOT_CHOICE:-}" != "skip" ]]; then
+            echo ""
+            echo "  Restart your Mac, then re-run: bash install.sh"
+            echo ""
+            exit 0
+        fi
+        warn "Continuing without reboot — BlackHole may not appear in Audio MIDI Setup yet."
+    fi
 else
     info "Installing BlackHole 2ch (may require admin password)..."
     brew install blackhole-2ch || brew install --cask blackhole-2ch
-    ok "BlackHole 2ch installed"
+    echo ""
+    echo -e "  ${BOLD}${RED}⚠  REBOOT REQUIRED before continuing.${NC}"
+    echo ""
+    echo "  BlackHole was just installed. macOS needs a restart to load the"
+    echo "  audio driver before it appears in Audio MIDI Setup."
+    echo ""
+    echo "  After restarting:"
+    echo "    1. Come back to this folder"
+    echo "    2. Run: ${BOLD}bash install.sh${NC}"
+    echo "    3. The installer will pick up from where it left off."
+    echo ""
+    read -rp "  Press Enter to exit — restart your Mac, then re-run the installer: " _
+    exit 0
 fi
 
 # ── Audio MIDI Setup guide ────────────────────────────────────────────────────
