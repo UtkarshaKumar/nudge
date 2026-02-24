@@ -36,7 +36,7 @@ def deduplicate(actions: list[dict], threshold: float = 0.80) -> list[dict]:
         return []
 
     # Sort by confidence descending so we keep the best version of each dup
-    sorted_actions = sorted(actions, key=lambda a: a.get("confidence", 0), reverse=True)
+    sorted_actions = sorted(actions, key=lambda a: a.get("confidence") if a.get("confidence") is not None else 0, reverse=True)
 
     unique: list[dict] = []
     for candidate in sorted_actions:
