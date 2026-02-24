@@ -1,0 +1,40 @@
+# nudge configuration
+# Copied to ~/.nudge/config.yaml by install.sh
+# Edit any values here, then run: nudge doctor
+
+audio:
+  device: "BlackHole 2ch"   # virtual loopback — captures meeting audio
+  sample_rate: 16000        # 16kHz required by Whisper
+  chunk_duration: 30        # save audio every N seconds (crash recovery)
+  channels: 1
+
+whisper:
+  model: "small.en"         # tiny.en | small.en | medium.en | large-v3
+  compute_type: "int8"      # int8 (fast) | float16 | float32
+  vad_filter: true          # skip silence — 40-60% faster
+  language: "en"            # set to "auto" for multilingual meetings
+
+ollama:
+  model: "llama3.2:3b"      # llama3.2:3b | phi3:mini | llama3.1:8b
+  host: "http://localhost:11434"
+  temperature: 0.1          # low = deterministic extraction
+  max_retries: 3
+
+reminders:
+  list_name: "Meeting Actions"
+  min_confidence: 0.6       # only add items above this threshold (0–1)
+  include_context: true     # add "why" to Reminder notes
+  include_source_quote: true  # add the triggering quote to notes
+
+notes:
+  output_dir: "~/Documents/Meeting Notes"
+  date_folders: true        # organize as YYYY/MM Month/filename.docx
+
+storage:
+  data_dir: "~/.nudge/data"
+  keep_audio: true
+  auto_delete_audio_days: 30  # 0 = keep forever
+
+display:
+  live_transcript: true     # stream transcript to terminal while recording
+  log_level: "INFO"         # DEBUG | INFO | WARNING

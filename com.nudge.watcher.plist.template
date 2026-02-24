@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS LaunchAgent for nudge auto-watch.
+  Installed by: nudge watch install
+  Removed by:   nudge watch uninstall
+  Location:     ~/Library/LaunchAgents/com.nudge.watcher.plist
+
+  This keeps nudge watching for meetings in the background,
+  starting automatically at login and restarting if it crashes.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.nudge.watcher</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>PYTHON_PATH</string>
+        <string>NUDGE_PATH</string>
+        <string>watch</string>
+        <string>run</string>
+    </array>
+
+    <!-- Start automatically when you log in -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart if it crashes -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Log output for debugging (nudge watch logs) -->
+    <key>StandardOutPath</key>
+    <string>NUDGE_HOME/watcher.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>NUDGE_HOME/watcher.log</string>
+
+    <!-- Throttle restart to avoid rapid crash loops -->
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <!-- Environment passthrough for shell tools -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>HOME_PATH</string>
+    </dict>
+</dict>
+</plist>
