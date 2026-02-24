@@ -1,0 +1,65 @@
+[
+    {
+        "id": "meeting_1_clear_deadlines",
+        "transcript": "Okay everyone, let's get started. Thanks for joining the sprint planning. We have a few things to assign. Sarah, can you please update the API documentation by this Friday? Yeah, I can do that. And John, we need the new database schema finalized by next Wednesday. I'll get it done. Great. I also need someone to reach out to the marketing team about the launch date. I'll do that by the end of the day tomorrow, says Mike. Alright, I think that's it for now. Thanks.",
+        "expected_actions": [
+            {
+                "task": "Update the API documentation",
+                "assignee": "Sarah",
+                "deadline_raw": "this Friday"
+            },
+            {
+                "task": "Finalize the new database schema",
+                "assignee": "John",
+                "deadline_raw": "next Wednesday"
+            },
+            {
+                "task": "Reach out to marketing team about launch date",
+                "assignee": "Mike",
+                "deadline_raw": "end of the day tomorrow"
+            }
+        ]
+    },
+    {
+        "id": "meeting_2_ambiguous_assignments",
+        "transcript": "Alright, looking at the Q3 goals... we definitely need to revamp the onboarding flow. Someone should take a look at the user drop-off metrics first. We also need to fix that bug in the checkout cart, it's causing issues. I can look into the checkout bug, says Alex. Okay, but what about the drop-off metrics? Let's just put it on the backlog for now and review it next week. We should also schedule a follow-up with the payment provider. We really need to do that soon.",
+        "expected_actions": [
+            {
+                "task": "Fix bug in the checkout cart",
+                "assignee": "Alex",
+                "deadline_raw": null
+            },
+            {
+                "task": "Take a look at user drop-off metrics",
+                "assignee": null,
+                "deadline_raw": null
+            },
+            {
+                "task": "Schedule a follow-up with the payment provider",
+                "assignee": null,
+                "deadline_raw": "soon"
+            }
+        ]
+    },
+    {
+        "id": "meeting_3_no_actions",
+        "transcript": "Welcome to the all-hands. I just want to give a quick update on the company financials. Q2 was great, we exceeded our revenue targets by 15%. Client churn is at an all-time low. We are very proud of the product and sales teams for their hard work. Keep it up everyone. We have some new hires joining next week, which we'll introduce then. That's all from my side. Have a great weekend.",
+        "expected_actions": []
+    },
+    {
+        "id": "meeting_4_complex_discussion",
+        "transcript": "Let's talk about the migration to AWS. It's a huge project. We need to audit all our current instances first. David, could you own the instance audit? Yes, I'll have the audit complete by October 15th. Perfect. Then we need to draft the network architecture. I think Sarah and Mark should collaborate on that. Sure. When do we need the architecture by? Let's say... end of October? Yeah, that works. Mark, you'll take the lead on drafting the architecture doc, but run it by Sarah. Okay, I will draft it by end of October.",
+        "expected_actions": [
+            {
+                "task": "Audit current instances",
+                "assignee": "David",
+                "deadline_raw": "October 15th"
+            },
+            {
+                "task": "Draft network architecture doc",
+                "assignee": "Mark",
+                "deadline_raw": "end of October"
+            }
+        ]
+    }
+]

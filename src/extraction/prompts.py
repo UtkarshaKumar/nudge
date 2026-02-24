@@ -13,8 +13,8 @@ Return ONLY a valid JSON array — no explanation, no markdown fences.
 Each element must be:
 {{
   "task": "verb-first description (e.g. Update the roadmap, Send recap email)",
-  "assignee": "person's name, or null if truly unclear",
-  "deadline": "natural language deadline as stated, or null if not mentioned",
+  "assignee": "person's name, or null (no quotes) if truly unclear",
+  "deadline_raw": "exact deadline mentioned (e.g., 'this Friday'), or null (no quotes) if not explicitly stated",
   "context": "one sentence explaining why this task exists",
   "confidence": 0.0,
   "source_quote": "the exact words that indicate this commitment"
@@ -23,13 +23,12 @@ Each element must be:
 Confidence guide:
   0.9–1.0  Person explicitly committed: "Yes, I'll do that by Friday"
   0.7–0.9  Strong implication: "Can you handle the client email?" + affirmative
-  0.5–0.7  Weak implication: vague ownership, no clear acceptance
 
 Rules:
-- Only include items with confidence >= 0.5
-- Do NOT invent tasks. Ground every item in the transcript.
-- If no action items exist, return: []
-- Start every task with a verb
+- Only include items with confidence >= 0.70.
+- Do NOT invent tasks, hallucinate deadlines, or split single tasks into multiples. Ground every item explicitly in the transcript.
+- Conversations about "someone should...", "we need to...", or "if we..." without a volunteer or explicit assignment are NOT commitments. Do not extract them.
+- If NO clear action items with an assigned or highly implied owner exist, you MUST return an empty array: []
 
 Transcript:
 {transcript}

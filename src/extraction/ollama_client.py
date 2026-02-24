@@ -190,12 +190,23 @@ class ActionExtractor:
         reraise=True,
     )
     def _extract_window(self, window_text: str) -> list[dict]:
-        raw = _call_ollama(
-            self._get_client(),
-            self.config.model,
-            CURRENT_ACTIONS_PROMPT.format(transcript=window_text),
-            temperature=self.config.temperature,
+        # Inject system instructions to force strictness
+        system_instruction = (
+            "You are an AI that strictly follows instructions. "
+            "If a meeting transcript does not contain any explicit commitments or action items assigned to a person, "
+            "you MUST output an empty JSON array `[]` and nothing else. "
+            "Do NOT invent tasks. Do not summarize the meeting as tasks."
         )
+        raw = self._get_client().generate(
+            model=self.config.model,
+            prompt=CURRENT_ACTIONS_PROMPT.format(transcript=window_text),
+            system=system_instruction,
+            options={
+                "temperature": 0.0,
+                "num_predict": 2048,
+            },
+        )["response"].strip()
+        
         result = _parse_json(raw)
         if isinstance(result, list):
             # Validate minimal structure

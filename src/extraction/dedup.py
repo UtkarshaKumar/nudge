@@ -24,7 +24,7 @@ def similarity(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, normalize(a), normalize(b)).ratio()
 
 
-def deduplicate(actions: list[dict], threshold: float = 0.80) -> list[dict]:
+def deduplicate(actions: list[dict], threshold: float = 0.85) -> list[dict]:
     """
     Remove near-duplicate action items.
 
