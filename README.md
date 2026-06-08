@@ -301,3 +301,10 @@ python -m src.evals.run
 - **Task Precision:** 75.0%
 - **Deadline Extract Accuracy:** 100.0%
 - **Owner Extract Accuracy:** 83.3%
+
+
+---
+
+> **Attribution Notice**
+> Cloning, copying, or reusing this code or design without credit is a copyright violation. If you use any part of this work, you must attribute the original author and link back to this repository.
+> © Utkarsha Kumar. All rights reserved.
